@@ -1,6 +1,7 @@
-from PySide6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-                                QPushButton, QLabel, QStackedWidget, QFrame,
-                                QFileDialog, QMessageBox)
+from PySide6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout,
+                                QVBoxLayout, QLabel, QPushButton,
+                                QStackedWidget, QFrame, QFileDialog,
+                                QMessageBox)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from ui.dashboard_widget import DashboardWidget
@@ -9,73 +10,99 @@ from ui.study_widget import StudyWidget
 from ui.exams_widget import ExamsWidget
 from ui.goals_widget import GoalsWidget
 from ui.do_it_now_widget import DoItNowWidget
-ACTIVE   = "background:#3b82f6;color:white;border:none;border-radius:8px;padding:10px 16px;text-align:left;font-size:14px;font-weight:bold;"
-INACTIVE = "background:transparent;color:#94a3b8;border:none;border-radius:8px;padding:10px 16px;text-align:left;font-size:14px;"
-NAV = [("Dashboard","dashboard"),("Subjects","subjects"),("Study Sessions","study"),
-       ("Trial Exams","exams"),("Goals","goals"),("Do It Now!","donow")]
+from utils.pdf_reporter import generate_report
+
 class MainWindow(QMainWindow):
     def __init__(self, user):
         super().__init__()
         self.user = user
-        self.setWindowTitle("YKS Tracker")
-        self.setMinimumSize(1100, 680)
-        c = QWidget(); self.setCentralWidget(c)
-        root = QHBoxLayout(c); root.setContentsMargins(0,0,0,0); root.setSpacing(0)
-        sb = QFrame(); sb.setFixedWidth(210); sb.setStyleSheet("background:#020617;")
-        sl = QVBoxLayout(sb); sl.setContentsMargins(12,24,12,16); sl.setSpacing(4)
-        brand = QLabel("YKS Tracker")
-        brand.setFont(QFont("Arial",16,QFont.Bold))
-        brand.setStyleSheet("color:#3b82f6;padding:0 8px 2px 8px;")
-        sl.addWidget(brand)
-        ul = QLabel(self.user.username)
-        ul.setStyleSheet("color:#475569;font-size:11px;padding:0 8px 14px 8px;")
-        sl.addWidget(ul)
-        self.nav_btns = []
-        for lbl, key in NAV:
-            btn = QPushButton(lbl); btn.setStyleSheet(INACTIVE)
-            btn.setCursor(Qt.PointingHandCursor)
-            btn.clicked.connect(lambda _, k=key: self.navigate(k))
-            sl.addWidget(btn); self.nav_btns.append((key, btn))
-        sl.addStretch()
-        pdf_btn = QPushButton("Export to PDF")
-        pdf_btn.setStyleSheet(
-            "background:#1e293b;color:#cbd5e1;border:1px solid #334155;"
-            "border-radius:6px;padding:9px;font-size:12px;")
-        pdf_btn.setCursor(Qt.PointingHandCursor)
-        pdf_btn.clicked.connect(self.export_pdf)
-        sl.addWidget(pdf_btn)
-        root.addWidget(sb)
-        cw = QFrame(); cw.setStyleSheet("background:#0f172a;")
-        cl = QVBoxLayout(cw); cl.setContentsMargins(0,0,0,0)
+        self.setWindowTitle("YKS Analiz - " + user.username)
+        self.setMinimumSize(1100, 700)
+        self.setStyleSheet("background-color: #0f172a;")
+        self._build_ui()
+    def _build_ui(self):
+        central = QWidget()
+        self.setCentralWidget(central)
+        main_layout = QHBoxLayout(central)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+        sidebar = QFrame()
+        sidebar.setFixedWidth(210)
+        sidebar.setStyleSheet("background: #020617;")
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(0)
+        logo = QLabel("YKS Tracker")
+        logo.setFont(QFont("Arial", 16, QFont.Bold))
+        logo.setStyleSheet("color:#3b82f6;padding:24px 20px 8px 20px;")
+        sidebar_layout.addWidget(logo)
+        user_lbl = QLabel(self.user.username)
+        user_lbl.setStyleSheet(
+            "color:#64748b;font-size:12px;padding:0 20px 16px 20px;")
+        sidebar_layout.addWidget(user_lbl)
+        divider = QFrame()
+        divider.setFixedHeight(1)
+        divider.setStyleSheet("background:#1e293b;")
+        sidebar_layout.addWidget(divider)
         self.stack = QStackedWidget()
-        self.pages = {
-            "dashboard": DashboardWidget(self.user),
-            "subjects":  SubjectsWidget(self.user),
-            "study":     StudyWidget(self.user),
-            "exams":     ExamsWidget(self.user),
-            "goals":     GoalsWidget(self.user),
-            "donow":     DoItNowWidget(self.user),
-        }
-        for p in self.pages.values(): self.stack.addWidget(p)
-        self.pages["donow"].session_saved.connect(self.pages["dashboard"].refresh)
-        cl.addWidget(self.stack)
-        root.addWidget(cw, 1)
-        self.navigate("dashboard")
-    def navigate(self, key):
-        if key in self.pages: self.stack.setCurrentWidget(self.pages[key])
-        for k, btn in self.nav_btns:
-            btn.setStyleSheet(ACTIVE if k==key else INACTIVE)
+        self.nav_buttons = []
+        pages = [
+            ("Dashboard", DashboardWidget(self.user)),
+            ("Subjects", SubjectsWidget(self.user)),
+            ("Study Sessions", StudyWidget(self.user)),
+            ("Trial Exams", ExamsWidget(self.user)),
+            ("Goals", GoalsWidget(self.user)),
+            ("Do It Now!", DoItNowWidget(self.user)),
+        ]
+        for idx, (name, widget) in enumerate(pages):
+            btn = QPushButton(name)
+            btn.setCheckable(True)
+            btn.setStyleSheet("""
+                QPushButton {
+                    color:#64748b;background:transparent;
+                    border:none;padding:13px 20px;
+                    text-align:left;font-size:14px;
+                }
+                QPushButton:hover{color:#f1f5f9;background:#0f172a;}
+                QPushButton:checked{
+                    color:#3b82f6;background:#0f172a;
+                    border-left:3px solid #3b82f6;
+                }
+            """)
+            btn.clicked.connect(lambda _, i=idx: self.switch_page(i))
+            sidebar_layout.addWidget(btn)
+            self.nav_buttons.append(btn)
+            self.stack.addWidget(widget)
+        sidebar_layout.addStretch()
+        divider2 = QFrame()
+        divider2.setFixedHeight(1)
+        divider2.setStyleSheet("background:#1e293b;")
+        sidebar_layout.addWidget(divider2)
+        pdf_btn = QPushButton("Export PDF Report")
+        pdf_btn.setStyleSheet("""
+            QPushButton{
+                background:#1e293b;color:#94a3b8;
+                border:none;padding:14px 20px;
+                text-align:left;font-size:13px;
+            }
+            QPushButton:hover{color:#f1f5f9;}
+        """)
+        pdf_btn.clicked.connect(self.export_pdf)
+        sidebar_layout.addWidget(pdf_btn)
+        main_layout.addWidget(sidebar)
+        main_layout.addWidget(self.stack)
+        self.switch_page(0)
+    def switch_page(self, index):
+        self.stack.setCurrentIndex(index)
+        for i, btn in enumerate(self.nav_buttons):
+            btn.setChecked(i == index)
     def export_pdf(self):
-        try:
-            from ui.pdf_export import generate_pdf
-            fname, _ = QFileDialog.getSaveFileName(
-                self, "Save PDF", f"YKS_Report_{self.user.username}.pdf",
-                "PDF Files (*.pdf)")
-            if fname:
-                generate_pdf(self.user, fname)
-                QMessageBox.information(self, "Done", f"PDF saved:\n{fname}")
-        except ImportError:
-            QMessageBox.warning(self, "Missing packages",
-                "Run: pip install reportlab matplotlib")
-        except Exception as e:
-            QMessageBox.warning(self, "PDF Error", str(e))
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Export PDF", "yks_report.pdf", "PDF (*.pdf)")
+        if filepath:
+            try:
+                generate_report(self.user, filepath)
+                QMessageBox.information(self, "Success",
+                                        "Report saved:\n" + filepath)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", str(e))
